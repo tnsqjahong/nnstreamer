@@ -147,6 +147,8 @@ typedef enum {
 
   YOLOV8_BOUNDING_BOX = 8,
 
+  YOLOV8_ORIENTED_BOUNDING_BOX = 9,
+
   BOUNDING_BOX_UNKNOWN,
 } bounding_box_modes;
 
@@ -180,6 +182,17 @@ typedef struct {
   float h;
 } anchor;
 
+/**
+ * @brief obb anchor data
+ */
+typedef struct {
+  float x_center;
+  float y_center;
+  float w;
+  float h;
+  float angle;
+} obb_anchor;
+
 /** @brief Represents a detect object */
 typedef struct {
   int valid;
@@ -188,6 +201,7 @@ typedef struct {
   int y;
   int width;
   int height;
+  int angle;
   gfloat prob;
 
   int tracking_id;

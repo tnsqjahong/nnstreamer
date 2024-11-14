@@ -21,6 +21,7 @@
 #define YOLO_DETECTION_IOU_THRESHOLD (0.45)
 #define DEFAULT_DETECTION_NUM_INFO_YOLO5 (5)
 #define DEFAULT_DETECTION_NUM_INFO_YOLO8 (4)
+#define DEFAULT_DETECTION_NUM_INFO_YOLO8_OBB (5)
 
 /**
  * @brief Class for YoloV5 box properties
@@ -76,9 +77,29 @@ class YoloV10 : public BoxProperties
   gfloat conf_threshold;
 };
 
+/**
+ * @brief Class for YoloV8 box properties
+ */
+class YoloV8_OBB : public BoxProperties
+{
+  public:
+  YoloV8_OBB ();
+  ~YoloV8_OBB ();
+  int setOptionInternal (const char *param);
+  int checkCompatible (const GstTensorsConfig *config);
+  GArray *decode (const GstTensorsConfig *config, const GstTensorMemory *input);
+
+  private:
+  /* From option3, whether the output values are scaled or not */
+  int scaled_output;
+  gfloat conf_threshold;
+  gfloat iou_threshold;
+};
+
 static BoxProperties *yolo5 = nullptr;
 static BoxProperties *yolo8 = nullptr;
 static BoxProperties *yolo10 = nullptr;
+static BoxProperties *yolov8_obb = nullptr;
 
 #ifdef __cplusplus
 extern "C" {
@@ -91,6 +112,9 @@ void fini_properties_yolo8 (void) __attribute__ ((destructor));
 
 void init_properties_yolo10 (void) __attribute__ ((constructor));
 void fini_properties_yolo10 (void) __attribute__ ((destructor));
+
+void init_properties_yolo8_obb (void) __attribute__ ((constructor));
+void fini_properties_yolo8_obb (void) __attribute__ ((destructor));
 #ifdef __cplusplus
 }
 #endif /* __cplusplus */
@@ -517,6 +541,119 @@ YoloV10::decode (const GstTensorsConfig *config, const GstTensorMemory *input)
   return results;
 }
 
+/** @brief Constructor of YoloV8-OBB */
+YoloV8_OBB::YoloV8_OBB ()
+{
+  conf_threshold = YOLO_DETECTION_CONF_THRESHOLD;
+  name = g_strdup_printf ("yolov8-obb");
+}
+
+/** @brief Destructor of YoloV8-OBB */
+YoloV8_OBB::~YoloV8_OBB ()
+{
+  g_free (name);
+}
+
+/** @brief Set internal option of YoloV8-OBB */
+int
+YoloV8_OBB::setOptionInternal (const char *param)
+{
+  gchar **options;
+  int noptions;
+
+  options = g_strsplit (param, ":", -1);
+  noptions = g_strv_length (options);
+  if (noptions > 0)
+    scaled_output = (int) g_ascii_strtoll (options[0], NULL, 10);
+  if (noptions > 1)
+    conf_threshold = (gfloat) g_ascii_strtod (options[1], NULL);
+  if (noptions > 2)
+    iou_threshold = (gfloat) g_ascii_strtod (options[2], NULL);
+
+  nns_logi ("Setting YOLOV8-OBB decoder as scaled_output: %d, conf_threshold: %.2f, iou_threshold: %.2f",
+      scaled_output, conf_threshold, iou_threshold);
+
+  g_strfreev (options);
+  return TRUE;
+}
+
+/** @brief Check compatibility of given tensors config */
+int
+YoloV8_OBB::checkCompatible (const GstTensorsConfig *config)
+{
+  const guint *dim = config->info.info[0].dimension;
+  g_autofree gchar *info_str = NULL;
+  int i;
+
+  if (!check_tensors (config, 1U)) {
+    info_str = gst_tensors_info_to_string (&config->info);
+    nns_loge ("YoloV8-OBB bounding-box decoder needs at least 1 valid tensor. The given input tensor is: %s.",
+        info_str);
+    return FALSE;
+  }
+
+  /** Only support for float type model */
+  if (config->info.info[0].type != _NNS_FLOAT32) {
+    info_str = gst_tensors_info_to_string (&config->info);
+    nns_loge ("YoloV8-OBB bounding-box decoder accepts float32 input tensors only. The given input tensor is: %s.",
+        info_str);
+    return FALSE;
+  }
+
+  max_detection = (i_width / 32) * (i_height / 32) + (i_width / 16) * (i_height / 16)
+                  + (i_width / 8) * (i_height / 8);
+
+  if (dim[0] != (total_labels + DEFAULT_DETECTION_NUM_INFO_YOLO8) || dim[1] != max_detection) {
+    nns_loge ("yolov8-obb boundingbox decoder requires the input shape to be %d:%d:1. But given shape is %d:%d:1. `tensor_transform mode=transpose` would be helpful.",
+        total_labels + DEFAULT_DETECTION_NUM_INFO_YOLO8, max_detection, dim[0], dim[1]);
+    return FALSE;
+  }
+
+  for (i = 2; i < NNS_TENSOR_RANK_LIMIT; ++i) {
+    if (dim[i] != 0 && dim[i] != 1) {
+      info_str = gst_tensors_info_to_string (&config->info);
+      nns_loge ("YoloV8-OBB bounding-box decoder accepts RANK=2 tensors (3rd and later dimensions should be 1 or 0). The given input tensor is: %s.",
+          info_str);
+
+      return FALSE;
+    }
+  }
+
+  return TRUE;
+}
+
+/**
+ * @brief Decode input memory to out buffer
+ * @param[in] config The structure of input tensor info.
+ * @param[in] input The array of input tensor data.
+ */
+GArray *
+YoloV8_OBB::decode (const GstTensorsConfig *config, const GstTensorMemory *input)
+{
+  GArray *results = NULL;
+  int bIdx, numTotalBox;
+  int cIdx, numTotalClass, cStartIdx, cIdxMax;
+  float *boxinput;
+  int is_output_scaled = scaled_output;
+  UNUSED (config);
+
+  numTotalBox = max_detection;
+  numTotalClass = total_labels;
+  cStartIdx = DEFAULT_DETECTION_NUM_INFO_YOLO8_OBB;
+  cIdxMax = numTotalClass + cStartIdx;
+
+  /* boxinput[numTotalBox][cIdxMax] */
+  boxinput = (float *) input[0].data;
+
+  results = g_array_sized_new (FALSE, TRUE, sizeof (detectedObject), numTotalBox);
+  for (bIdx = 0; bIdx < numTotalBox; ++bIdx) {
+    // TODO: append the box info into results
+  }
+
+  nms (results, iou_threshold); // should use obb available nms
+  return results
+}
+
 /** @brief Initialize this object for tensor decoder bounding box */
 void
 init_properties_yolo5 ()
@@ -560,4 +697,19 @@ void
 fini_properties_yolo10 ()
 {
   delete yolo10;
+}
+
+/** @brief Initialize this object for tensor decoder bounding box */
+void
+init_properties_yolo8_obb ()
+{
+  yolo8_obb = new YoloV8_OBB ();
+  BoundingBox::addProperties (yolo8_obb);
+}
+
+/** @brief Destruct this object for tensor decoder bounding box */
+void
+fini_properties_yolo8_obb ()
+{
+  delete yolo8_obb;
 }

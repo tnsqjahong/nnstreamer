@@ -79,6 +79,7 @@ static const char *bb_modes[] = {
   [YOLOV5_BOUNDING_BOX] = "yolov5",
   [MP_PALM_DETECTION_BOUNDING_BOX] = "mp-palm-detection",
   [YOLOV8_BOUNDING_BOX] = "yolov8",
+  [YOLOV8_ORIENTED_BOUNDING_BOX] = "yolov8-obb"
   NULL,
 };
 
@@ -227,6 +228,8 @@ init_bb (void)
         "\t\t- the threshold of confidence (optional, default set to 0.25)\n"
         "\t\t- the threshold of IOU (optional, default set to 0.45)\n"
         "\t\tAn example of option3 is option3 = 0: 0.65:0.6 \n"
+        // TODO:
+        // "\t for yolov8 obb mode:\n"
         "\tfor mobilenet-ssd mode:\n"
         "\t\tThe option3 definition scheme is, in order, as follows\n"
         "\t\t- box priors location file (mandatory)\n"
@@ -287,6 +290,9 @@ fini_bb (void)
 static int
 distance_compare (const void *a, const void *b)
 {
+  // TODO: 
+  // legacy yolo use the distance between centroids to tracking objects
+  // euclidean distance may not enough with obb
   const distanceArrayData *da = (const distanceArrayData *) a;
   const distanceArrayData *db = (const distanceArrayData *) b;
 
@@ -329,6 +335,16 @@ iou (detectedObject *a, detectedObject *b)
   return (o >= 0) ? o : 0;
 }
 
+// TODO: iou for obb
+static gfloat
+iou_obb ()
+{
+  // TODO
+  // 1. calculate intersection area
+  // 2. calculate union of the area
+  // 3. iou: intersection / union
+}
+
 /**
  * @brief Apply NMS to the given results (objects[DETECTION_MAX])
  */
@@ -350,6 +366,7 @@ nms (GArray *results, gfloat threshold)
       for (j = i + 1; j < boxes_size; j++) {
         detectedObject *b = &g_array_index (results, detectedObject, j);
         if (b->valid == TRUE) {
+          // TODO: seperate iou & iou_obb, bounding box contains mode, but where is the bounding box?
           if (iou (a, b) > threshold) {
             b->valid = FALSE;
           }
@@ -600,6 +617,7 @@ BoundingBox::updateCentroids (GArray *boxes)
 void
 BoundingBox::draw (GstMapInfo *out_info, GArray *results)
 {
+  // TODO: obb box with angle
   uint32_t *frame = (uint32_t *) out_info->data; /* Let's draw per pixel (4bytes) */
   unsigned int i;
   guint i_width, i_height;
@@ -688,6 +706,7 @@ BoundingBox::draw (GstMapInfo *out_info, GArray *results)
 void
 BoundingBox::logBoxes (GArray *results)
 {
+  // TODO: add some features for obb
   guint i;
 
   nns_logi ("Detect %u boxes in %u x %u input image", results->len,
