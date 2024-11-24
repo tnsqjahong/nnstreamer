@@ -99,7 +99,7 @@ class YoloV8_OBB : public BoxProperties
 static BoxProperties *yolo5 = nullptr;
 static BoxProperties *yolo8 = nullptr;
 static BoxProperties *yolo10 = nullptr;
-static BoxProperties *yolov8_obb = nullptr;
+static BoxProperties *yolo8_obb = nullptr;
 
 #ifdef __cplusplus
 extern "C" {
@@ -650,8 +650,8 @@ YoloV8_OBB::decode (const GstTensorsConfig *config, const GstTensorMemory *input
     // TODO: append the box info into results
   }
 
-  nms (results, iou_threshold); // should use obb available nms
-  return results
+  nms (results, iou_threshold, YOLOV8_ORIENTED_BOUNDING_BOX); // should use obb available nms
+  return results;
 }
 
 /** @brief Initialize this object for tensor decoder bounding box */
