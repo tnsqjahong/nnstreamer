@@ -253,7 +253,7 @@ YoloV5::decode (const GstTensorsConfig *config, const GstTensorMemory *input)
     }
   }
 
-  nms (results, iou_threshold);
+  nms (results, iou_threshold, YOLOV5_BOUNDING_BOX);
   return results;
 }
 
@@ -397,7 +397,7 @@ YoloV8::decode (const GstTensorsConfig *config, const GstTensorMemory *input)
     }
   }
 
-  nms (results, iou_threshold);
+  nms (results, iou_threshold, YOLOV8_BOUNDING_BOX);
   return results;
 }
 
@@ -647,7 +647,46 @@ YoloV8_OBB::decode (const GstTensorsConfig *config, const GstTensorMemory *input
 
   results = g_array_sized_new (FALSE, TRUE, sizeof (detectedObject), numTotalBox);
   for (bIdx = 0; bIdx < numTotalBox; ++bIdx) {
-    // TODO: append the box info into results
+    float maxClassConfVal = -INFINITY;
+    int maxClassIdx = -1;
+
+    for (cIdx = cStartIdx; cIdx < cIdxMax; ++cIdx) {
+      if (boxinput[bIdx * cIdxMax + cIdx] > maxClassConfVal) {
+        maxClassConfVal = boxinput[bIdx * cIdxMax + cIdx];
+        maxClassIdx = cIdx;
+      }
+    }
+
+    if (maxClassConfVal > conf_threshold) {
+      detectedObject object;
+      float cx, cy, w, h, theta;
+
+      cx = boxinput[bIdx * cIdxMax + 0];
+      cy = boxinput[bIdx * cIdxMax + 1];
+      w = boxinput[bIdx * cIdxMax + 2];
+      h = boxinput[bIdx * cIdxMax + 3];
+      theta = boxinput[bIdx * cIdxMax + 4];
+
+      if (!is_output_scaled) {
+        cx *= (float) i_width;
+        cy *= (float) i_height;
+        w *= (float) i_width;
+        h *= (float) i_height;
+      }
+
+      object.x = (int) (MAX(0.f, cx - w / 2.f));
+      object.y = (int) (MAX(0.f, cy - h / 2.f));
+      object.width = (int) w;
+      object.height = (int) h;
+      object.angle = theta;
+
+      object.prob = maxClassConfVal;
+      object.class_id = maxClassIdx - DEFAULT_DETECTION_NUM_INFO_YOLO8_OBB;
+      object.tracking_id = 0;
+      object.valid = TRUE;
+
+      g_array_append_val(results, object);
+    }
   }
 
   nms (results, iou_threshold, YOLOV8_ORIENTED_BOUNDING_BOX); // should use obb available nms
