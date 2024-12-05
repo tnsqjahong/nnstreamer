@@ -813,7 +813,7 @@ BoundingBox::draw (GstMapInfo *out_info, GArray *results)
       continue;
     }
 
-    if (bdata->getMode() == YOLOV8_ORIENTED_BOUNDING_BOX) {
+    if (mode == YOLOV8_ORIENTED_BOUNDING_BOX) {
       // For rotated boxes
       Point corners[4];
       get_rotated_rect_corners(a, corners);
