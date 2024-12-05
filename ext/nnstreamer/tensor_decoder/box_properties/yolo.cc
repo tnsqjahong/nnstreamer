@@ -605,7 +605,7 @@ YoloV8_OBB::checkCompatible (const GstTensorsConfig *config)
 
   if (dim[0] != (total_labels + DEFAULT_DETECTION_NUM_INFO_YOLO8) || dim[1] != max_detection) {
     nns_loge ("yolov8-obb boundingbox decoder requires the input shape to be %d:%d:1. But given shape is %d:%d:1. `tensor_transform mode=transpose` would be helpful.",
-        total_labels + DEFAULT_DETECTION_NUM_INFO_YOLO8, max_detection, dim[0], dim[1]);
+        total_labels + DEFAULT_DETECTION_NUM_INFO_YOLO8_OBB, max_detection, dim[0], dim[1]);
     return FALSE;
   }
 
